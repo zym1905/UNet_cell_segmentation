@@ -16,10 +16,13 @@ from dice_score import dice_loss
 from evaluate import evaluate
 from uNetModel import UNet
 
-root_dir = Path('./data/imgs/')
-target_idr = Path('./data/masks/')
-dir_checkpoint = Path('./checkpoints/')
+from os import listdir
+from skimage.io import imread
+import numpy as np
 
+root_dir = Path('/home/zhangyong/work/MLIM/data/data_scince_bowl_2018/stage1_train')
+target_dir = Path('/home/zhangyong/work/MLIM/data/data_scince_bowl_2018/stage1_train_final')
+dir_checkpoint = Path('/home/zhangyong/work/MLIM/data/UNet/checkpoints/')
 
 def train_net(net,
               device,
@@ -30,11 +33,40 @@ def train_net(net,
               save_checkpoint: bool = True,
               img_scale: float = 0.5,
               amp: bool = False):
+    # 0. data format
+    dirs = listdir(root_dir)
+    print('original image number:' + str(len(dirs)))
+    count = 0
+    for dir_name in dirs:
+        if dir_name.startswith('.'):
+            continue
+        image_dir = root_dir + '/' + dir_name + '/images'
+        images = listdir(image_dir)
+        mask_dir = root_dir + '/' + dir_name + '/masks'
+        masks = listdir(mask_dir)
+
+        if len(images) > 1:
+            sys.exit(-1)
+        image_ndarrary = imread(image_dir + '/' + images[0], as_gray=True)
+        if image_ndarrary.shape != (256, 256):
+            continue
+
+        image_name = images[0][:-4]
+        # print(image_name)
+        mask_ndarrary = np.ndarray(shape=image_ndarrary.shape)
+        for mask in masks:
+            mask_ndarrary += imread(mask_dir + '/' + mask, as_gray=True)
+        count += 1
+        np.savez(target_dir + '/images/image_' + image_name + '.npz', image_ndarrary, 'image_' + image_name)
+        np.savez(target_dir + '/masks/mask_' + image_name + '.npz', mask_ndarrary, 'mask_' + image_name)
+
+        print('final image number:' + str(count))
+
     # 1. Create dataset
     try:
-        dataset = CarvanaDataset(root_dir, target_idr, img_scale)
+        dataset = CarvanaDataset(image_dir, mask_dir, img_scale)
     except (AssertionError, RuntimeError):
-        dataset = BasicDataset(root_dir, target_idr, img_scale)
+        dataset = BasicDataset(image_dir, mask_dir, img_scale)
 
     # 2. Split into train / validation partitions
     n_val = int(len(dataset) * val_percent)

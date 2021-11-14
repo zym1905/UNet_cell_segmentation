@@ -11,10 +11,9 @@ from torch.utils.data import Dataset
 from skimage.io import imread
 
 class BasicDataset(Dataset):
-    def __init__(self, root_dir: str, target_dir: str, scale: float = 1.0):
-        self.dataFromat(root_dir, target_dir)
-        self.images_dir = Path(target_dir + '/images')
-        self.masks_idr = Path(target_dir + '/masks')
+    def __init__(self, images_dir: str, masks_idr: str, scale: float = 1.0):
+        self.images_dir = Path(images_dir)
+        self.masks_idr = Path(masks_idr)
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
         self.scale = scale
         self.ids = [listdir(self.images_dir)]
@@ -24,36 +23,6 @@ class BasicDataset(Dataset):
 
     def __len__(self):
         return len(self.ids)
-
-    @classmethod
-    def dataFromat(cls, root_dir, target_dir):
-        dirs = listdir(root_dir)
-        print('original image number:' + str(len(dirs)))
-        count = 0
-        for dir_name in dirs:
-            if dir_name.startswith('.'):
-                continue
-            image_dir = root_dir + '/' + dir_name + '/images'
-            images = listdir(image_dir)
-            mask_dir = root_dir + '/' + dir_name + '/masks'
-            masks = listdir(mask_dir)
-
-            if len(images) > 1:
-                sys.exit(-1)
-            image_ndarrary = imread(image_dir + '/' + images[0], as_gray=True)
-            if image_ndarrary.shape != (256, 256):
-                continue
-
-            image_name = images[0][:-4]
-            # print(image_name)
-            mask_ndarrary = np.ndarray(shape=image_ndarrary.shape)
-            for mask in masks:
-                mask_ndarrary += imread(mask_dir + '/' + mask, as_gray=True)
-            count += 1
-            np.savez(target_dir + '/images/image_' + image_name + '.npz', image_ndarrary, 'image_' + image_name)
-            np.savez(target_dir + '/masks/mask_' + image_name + '.npz', mask_ndarrary, 'mask_' + image_name)
-
-        print('final image number:' + str(count))
 
     @classmethod
     def preprocess(cls, cell_img, scale, is_mask):
@@ -106,5 +75,5 @@ class BasicDataset(Dataset):
 
 
 class CarvanaDataset(BasicDataset):
-    def __init__(self, root_dir, target_dir, scale=1):
-        super().__init__(root_dir, target_dir, scale)
+    def __init__(self, images_dir, masks_idr, scale=1):
+        super().__init__(images_dir, masks_idr, scale)
