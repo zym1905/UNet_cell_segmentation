@@ -11,12 +11,15 @@ from torch.utils.data import Dataset
 from skimage.io import imread
 
 class BasicDataset(Dataset):
-    def __init__(self, images_dir: str, masks_idr: str, scale: float = 1.0):
+    def __init__(self, images_dir: str, masks_dir: str, scale: float = 1.0):
         self.images_dir = Path(images_dir)
-        self.masks_idr = Path(masks_idr)
+        self.masks_idr = Path(masks_dir)
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
         self.scale = scale
-        self.ids = [listdir(self.images_dir)]
+        self.ids = listdir(self.images_dir)
+        print(self.images_dir)
+        print(self.masks_idr)
+        print(self.ids)
         if not self.ids:
             raise RuntimeError(f'No input file found in {self.images_dir}, make sure you put your images there')
         logging.info(f'Creating dataset with {len(self.ids)} examples')
@@ -32,13 +35,14 @@ class BasicDataset(Dataset):
         cell_img = cell_img.resize((newW, newH), resample=Image.NEAREST if is_mask else Image.BICUBIC)
         img_ndarray = np.asarray(cell_img)
 
-        if img_ndarray.ndim == 2 and not is_mask:
+        if img_ndarray.ndim == 2:
             img_ndarray = img_ndarray[np.newaxis, ...]
-        elif not is_mask:
+        else:
             img_ndarray = img_ndarray.transpose((2, 0, 1))
 
-        if not is_mask:
-            img_ndarray = img_ndarray / 255
+        if is_mask:
+            img_ndarray = img_ndarray.squeeze(0)
+        img_ndarray = img_ndarray / 255
 
         return img_ndarray
 
@@ -53,9 +57,10 @@ class BasicDataset(Dataset):
             return Image.open(filename)
 
     def __getitem__(self, idx):
-        name = self.ids[idx]
-        mask_file = list(self.masks_dir.glob(name + '.*'))
-        img_file = list(self.images_dir.glob(name + '.*'))
+        name = self.ids[idx][5:-4]
+        print('name:' + name)
+        mask_file = list(self.masks_idr.glob('mask' + name + '.*'))
+        img_file = list(self.images_dir.glob('image' + name + '.*'))
 
         assert len(mask_file) == 1, f'Either no mask or multiple masks found for the ID {name}: {mask_file}'
         assert len(img_file) == 1, f'Either no image or multiple images found for the ID {name}: {img_file}'

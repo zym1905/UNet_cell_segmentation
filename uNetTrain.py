@@ -17,12 +17,16 @@ from evaluate import evaluate
 from uNetModel import UNet
 
 from os import listdir
-from skimage.io import imread
+from os import path
 import numpy as np
+#from skimage.io import imread
+from PIL import Image
 
-root_dir = Path('/home/zhangyong/work/MLIM/data/data_scince_bowl_2018/stage1_train')
-target_dir = Path('/home/zhangyong/work/MLIM/data/data_scince_bowl_2018/stage1_train_final')
-dir_checkpoint = Path('/home/zhangyong/work/MLIM/data/UNet/checkpoints/')
+root_dir = '/Users/zhangyong/work/MLIM/data/data-science-bowl-2018/stage1_train'
+target_dir = '/Users/zhangyong/work/MLIM/data/data-science-bowl-2018/final/'
+dir_checkpoint = Path('/Users/zhangyong/work/MLIM/data/UNet/checkpoints/')
+images_dir = '/Users/zhangyong/work/MLIM/data/data-science-bowl-2018/final/images'
+masks_dir = '/Users/zhangyong/work/MLIM/data/data-science-bowl-2018/final/masks'
 
 def train_net(net,
               device,
@@ -34,6 +38,7 @@ def train_net(net,
               img_scale: float = 0.5,
               amp: bool = False):
     # 0. data format
+    '''
     dirs = listdir(root_dir)
     print('original image number:' + str(len(dirs)))
     count = 0
@@ -47,26 +52,36 @@ def train_net(net,
 
         if len(images) > 1:
             sys.exit(-1)
-        image_ndarrary = imread(image_dir + '/' + images[0], as_gray=True)
-        if image_ndarrary.shape != (256, 256):
+        #image_ndarrary = imread(image_dir + '/' + images[0], as_gray=True)
+        image_fp = Image.open(image_dir + '/' + images[0])
+        if image_fp.size != (256, 256):
             continue
 
         image_name = images[0][:-4]
         # print(image_name)
-        mask_ndarrary = np.ndarray(shape=image_ndarrary.shape)
+        mask_ndarrary = np.ndarray(shape=image_fp.size)
         for mask in masks:
-            mask_ndarrary += imread(mask_dir + '/' + mask, as_gray=True)
+            #mask_ndarrary += imread(mask_dir + '/' + mask, as_gray=True)
+            mask_fp = Image.open(mask_dir + '/' + mask)
+            mask_ndarrary += np.asarray(mask_fp)
         count += 1
-        np.savez(target_dir + '/images/image_' + image_name + '.npz', image_ndarrary, 'image_' + image_name)
-        np.savez(target_dir + '/masks/mask_' + image_name + '.npz', mask_ndarrary, 'mask_' + image_name)
+        mask_fp = Image.fromarray(mask_ndarrary)
 
-        print('final image number:' + str(count))
+        #file, ext = path.splitext(image_dir + '/' + images[0])
+        image_fp = image_fp.convert('L')
+        mask_fp = mask_fp.convert('L')
+        image_fp.save(target_dir + '/images/image_' + image_name + '.png')
+        mask_fp.save(target_dir + '/masks/mask_' + image_name + '.png')
+        #np.savez(target_dir + '/images/image_' + image_name + '.npz', np.asarray(image_fp), 'image_' + image_name)
+        #np.savez(target_dir + '/masks/mask_' + image_name + '.npz', mask_ndarrary, 'mask_' + image_name)
 
+    print('final image number:' + str(count))
+    '''
     # 1. Create dataset
     try:
-        dataset = CarvanaDataset(image_dir, mask_dir, img_scale)
+        dataset = CarvanaDataset(images_dir, masks_dir, img_scale)
     except (AssertionError, RuntimeError):
-        dataset = BasicDataset(image_dir, mask_dir, img_scale)
+        dataset = BasicDataset(images_dir, masks_dir, img_scale)
 
     # 2. Split into train / validation partitions
     n_val = int(len(dataset) * val_percent)
@@ -112,6 +127,9 @@ def train_net(net,
                 images = batch['image']
                 true_masks = batch['mask']
 
+                print(images.shape)
+                print(images[0])
+
                 assert images.shape[1] == net.n_channels, \
                     f'Network has been defined with {net.n_channels} input channels, ' \
                     f'but loaded images have {images.shape[1]} channels. Please check that ' \
@@ -122,6 +140,10 @@ def train_net(net,
 
                 with torch.cuda.amp.autocast(enabled=amp):
                     masks_pred = net(images)
+                    print(masks_pred.shape)
+                    print(masks_pred)
+                    print(true_masks.shape)
+                    print(true_masks[0])
                     loss = criterion(masks_pred, true_masks) \
                            + dice_loss(F.softmax(masks_pred, dim=1).float(),
                                        F.one_hot(true_masks, net.n_classes).permute(0, 3, 1, 2).float(),
@@ -178,11 +200,11 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
     parser.add_argument('--epochs', '-e', metavar='E', type=int, default=5, help='Number of epochs')
-    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=1, help='Batch size')
+    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=5, help='Batch size')
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=0.00001,
                         help='Learning rate', dest='lr')
     parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
-    parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
+    parser.add_argument('--scale', '-s', type=float, default=1, help='Downscaling factor of the images')
     parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
                         help='Percent of the data that is used as validation (0-100)')
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
@@ -198,7 +220,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     # Change here to adapt to your data
-    # n_channels=1 for gray images
+    # n_channels=1 for grayscale images
     # n_classes is the number of probabilities you want to get per pixel
     net = UNet(n_channels=1, n_classes=2, bilinear=True)
 
